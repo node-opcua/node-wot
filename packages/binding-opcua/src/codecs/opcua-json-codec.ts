@@ -124,7 +124,7 @@ export class OpcuaJSONCodec implements ContentCodec {
                     dataValueJSON = opcuaJsonEncodeDataValue(opcuaJsonDecodeDataValue(value as DataValueJSON), true);
                 }
                 dataValueJSON = formatForNodeWoT(dataValueJSON);
-                return Buffer.from(JSON.stringify(dataValueJSON), "ascii");
+                return Buffer.from(JSON.stringify(dataValueJSON), "utf-8");
             }
             case "Variant": {
                 if (value instanceof DataValue) {
@@ -134,7 +134,7 @@ export class OpcuaJSONCodec implements ContentCodec {
                 } else if (typeof value === "string") {
                     value = JSON.parse(value);
                 }
-                return Buffer.from(JSON.stringify(value), "ascii");
+                return Buffer.from(JSON.stringify(value), "utf-8");
             }
             case "Value": {
                 if (value === undefined) {
@@ -145,7 +145,7 @@ export class OpcuaJSONCodec implements ContentCodec {
                 } else if (value instanceof Variant) {
                     value = opcuaJsonEncodeVariant(value, false);
                 }
-                return Buffer.from(JSON.stringify(value), "ascii");
+                return Buffer.from(JSON.stringify(value), "utf-8");
             }
             default:
                 throw new Error("[OpcuaJSONCodec|valueToBytes]: Invalid type : " + type);
