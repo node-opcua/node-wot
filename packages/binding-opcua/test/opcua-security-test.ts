@@ -54,53 +54,53 @@ const thingDescription: WoT.ThingDescription = {
         },
         // OPCUAChannelSecurityScheme
         "c:sign-encrypt_basic256Sha256": <OPCUAChannelSecurityScheme>{
-            scheme: "uav:channel-security",
-            messageMode: "sign_encrypt",
-            policy: "Basic256Sha256", // deprecated
+            scheme: "uav:channelsec",
+            "uav:securityMode": "SignAndEncrypt",
+            "uav:securityPolicy": "Basic256Sha256", // deprecated
         },
         // Aes128_Sha256_RsaOaep
         "c:sign-encrypt_aes128Sha256RsaOaep": <OPCUAChannelSecurityScheme>{
-            scheme: "uav:channel-security",
-            messageMode: "sign_encrypt",
-            policy: "Aes128_Sha256_RsaOaep",
+            scheme: "uav:channelsec",
+            "uav:securityMode": "SignAndEncrypt",
+            "uav:securityPolicy": "Aes128_Sha256_RsaOaep",
         },
 
         "c:sign_basic256Sha256": <OPCUAChannelSecurityScheme>{
-            scheme: "uav:channel-security",
-            messageMode: "sign",
-            policy: "Basic256Sha256",
+            scheme: "uav:channelsec",
+            "uav:securityMode": "Sign",
+            "uav:securityPolicy": "Basic256Sha256",
         },
         "c:invalid-sign": <OPCUAChannelSecurityScheme>{
-            scheme: "uav:channel-security",
-            messageMode: "sign",
-            policy: "Basic192Rsa15", // Basic192Rsa15 valid policy but unsupported by server
+            scheme: "uav:channelsec",
+            "uav:securityMode": "Sign",
+            "uav:securityPolicy": "Basic192Rsa15", // Basic192Rsa15 valid policy but unsupported by server
         },
         "c:no_security": <OPCUAChannelSecurityScheme>{
-            scheme: "uav:channel-security",
-            messageMode: "none",
+            scheme: "uav:channelsec",
+            "uav:securityMode": "None",
         },
         //
         "a:username-password": <OPCUACUserNameAuthenticationScheme>{
             scheme: "uav:authentication",
-            tokenType: "username",
+            "uav:userIdentityToken": "UserName",
             userName: "joe",
             password: "password_for_joe",
         },
         "a:username-invalid-password": <OPCUACUserNameAuthenticationScheme>{
             scheme: "uav:authentication",
-            tokenType: "username",
+            "uav:userIdentityToken": "UserName",
             userName: "joe",
             password: "**INVALID**password_for_joe",
         },
         "a:x509-certificate": <OPCUACertificateAuthenticationScheme>{
             scheme: "uav:authentication",
-            tokenType: "certificate",
+            "uav:userIdentityToken": "Certificate",
             certificate: "....",
             privateKey: "....",
         },
         "a:x509-certificate-no-private-key": <OPCUACertificateAuthenticationScheme>{
             scheme: "uav:authentication",
-            tokenType: "certificate",
+            "uav:userIdentityToken": "Certificate",
             certificate: "....",
             privateKey: undefined,
         },
@@ -302,18 +302,18 @@ describe("verify test securityDefinitions", () => {
                 for (const subKey of comboDef.allOf) {
                     expect(definitions).to.have.property(subKey);
                 }
-            } else if (def.scheme === "uav:channel-security") {
+            } else if (def.scheme === "uav:channelsec") {
                 const channelDef = def as OPCUAChannelSecurityScheme;
-                expect(channelDef).to.have.property("messageMode");
-                expect(["none", "sign", "sign_encrypt"]).to.include(channelDef.messageMode);
-                // policy is optional
+                expect(channelDef).to.have.property("uav:securityMode");
+                expect(["None", "Sign", "SignAndEncrypt"]).to.include(channelDef["uav:securityMode"]);
+                // uav:securityPolicy is optional
             } else if (def.scheme === "uav:authentication") {
                 const authDef = def as OPCUACertificateAuthenticationScheme | OPCUACUserNameAuthenticationScheme;
-                expect(authDef).to.have.property("tokenType");
-                if (authDef.tokenType === "username") {
+                expect(authDef).to.have.property("uav:userIdentityToken");
+                if (authDef["uav:userIdentityToken"] === "UserName") {
                     expect(authDef).to.have.property("userName");
                     expect(authDef).to.have.property("password");
-                } else if (authDef.tokenType === "certificate") {
+                } else if (authDef["uav:userIdentityToken"] === "Certificate") {
                     expect(authDef).to.have.property("certificate");
                     expect(authDef).to.have.property("privateKey");
                 }
@@ -460,39 +460,90 @@ describe("Testing OPCUA Security Combination", () => {
     });
 });
 
-describe("Testing unsupported OPCUA security schemes", () => {
-    // A scheme we fail to recognise used to fall through `default:` and leave the
-    // client on its defaults - no encryption, no user - while setSecurity()
-    // returned true. Nothing downstream could detect that, so these must throw.
-
-    it("REFUSE1 - should refuse an unknown scheme in our own namespace", () => {
+describe("Testing OPCUA Security Scheme Migration (OPC 10101 v1.00)", () => {
+    it("MIG1 - should reject the pre-1.00 'uav:channel-security' scheme with a message naming its replacement", () => {
         const client = new OPCUAProtocolClient();
-        expect(() => client.setSecurity([{ scheme: "uav:channelsec" } as unknown as SecurityScheme])).to.throw(
+        expect(() =>
+            client.setSecurity([
+                {
+                    scheme: "uav:channel-security",
+                    messageMode: "sign_encrypt",
+                    policy: "Basic256Sha256",
+                } as unknown as SecurityScheme,
+            ])
+        ).to.throw(/uav:channelsec/);
+    });
+
+    it("MIG1b - should still refuse any other unknown scheme in our namespace", () => {
+        const client = new OPCUAProtocolClient();
+        expect(() => client.setSecurity([{ scheme: "uav:whatever" } as unknown as SecurityScheme])).to.throw(
             /Unsupported OPC UA security scheme/
         );
     });
 
-    it("REFUSE2 - should still ignore schemes belonging to another binding", () => {
+    it("MIG2 - should still ignore security schemes that belong to another binding", () => {
         const client = new OPCUAProtocolClient();
         expect(client.setSecurity([{ scheme: "basic" } as SecurityScheme])).to.eql(true);
     });
+});
 
-    it("REFUSE3 - should refuse an unknown messageMode instead of downgrading it to none", () => {
-        expect(() =>
-            resolveChannelSecurity({
-                scheme: "uav:channel-security",
-                messageMode: "SignAndEncrypt",
-                policy: "Basic256Sha256",
-            } as unknown as OPCUAChannelSecurityScheme)
-        ).to.throw(/Invalid message mode/);
+describe("Testing OPCUA Security Scheme conformance (OPC 10101 6.3.3)", () => {
+    it("CONF1 - should accept the full policy URI as well as the short name", () => {
+        const resolved = resolveChannelSecurity({
+            scheme: "uav:channelsec",
+            "uav:securityMode": "Sign",
+            "uav:securityPolicy": "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256",
+        } as unknown as OPCUAChannelSecurityScheme);
+        expect(resolved.securityPolicy).to.eql(SecurityPolicy.Basic256Sha256);
+        expect(resolved.messageSecurityMode).to.eql(MessageSecurityMode.Sign);
     });
 
-    it("REFUSE4 - should refuse an unknown tokenType instead of connecting anonymously", () => {
+    it("CONF2 - should accept securityPolicy 'None' together with securityMode 'None'", () => {
+        const resolved = resolveChannelSecurity({
+            scheme: "uav:channelsec",
+            "uav:securityMode": "None",
+            "uav:securityPolicy": "None",
+        } as unknown as OPCUAChannelSecurityScheme);
+        expect(resolved.securityPolicy).to.eql(SecurityPolicy.None);
+        expect(resolved.messageSecurityMode).to.eql(MessageSecurityMode.None);
+    });
+
+    it("CONF3 - should refuse an unknown securityMode instead of downgrading to None", () => {
+        expect(() =>
+            resolveChannelSecurity({
+                scheme: "uav:channelsec",
+                "uav:securityMode": "sign_encrypt",
+                "uav:securityPolicy": "Basic256Sha256",
+            } as unknown as OPCUAChannelSecurityScheme)
+        ).to.throw(/Invalid security mode/);
+    });
+
+    it("CONF4 - should refuse securityPolicy 'None' when the mode asks for security", () => {
+        expect(() =>
+            resolveChannelSecurity({
+                scheme: "uav:channelsec",
+                "uav:securityMode": "SignAndEncrypt",
+                "uav:securityPolicy": "None",
+            } as unknown as OPCUAChannelSecurityScheme)
+        ).to.throw(/cannot be used with security mode/);
+    });
+
+    it("CONF5 - should refuse IssuedToken rather than connect anonymously", () => {
         expect(() =>
             resolvedUserIdentity({
                 scheme: "uav:authentication",
-                tokenType: "IssuedToken",
+                "uav:userIdentityToken": "IssuedToken",
+                "uav:issueToken": "oauth2_sc",
             } as unknown as OPCUACAuthenticationScheme)
-        ).to.throw(/Invalid user identity token type/);
+        ).to.throw(/IssuedToken/);
+    });
+
+    it("CONF6 - should refuse an unknown userIdentityToken rather than connect anonymously", () => {
+        expect(() =>
+            resolvedUserIdentity({
+                scheme: "uav:authentication",
+                "uav:userIdentityToken": "username",
+            } as unknown as OPCUACAuthenticationScheme)
+        ).to.throw(/Invalid user identity token/);
     });
 });

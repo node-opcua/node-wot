@@ -63,7 +63,7 @@ import { Argument, MessageSecurityMode, UserTokenType } from "node-opcua-types";
 import { isGoodish2 } from "node-opcua";
 
 import { schemaDataValue } from "./codecs/opcua-data-schemas";
-import { OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
+import { DEPRECATED_SCHEME_NAMES, OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
 import { CertificateManagerSingleton } from "./certificate-manager-singleton";
 import { resolveChannelSecurity, resolvedUserIdentity } from "./opcua-security-resolver";
 import { findMostSecureChannel } from "./find-most-secure-channel";
@@ -548,7 +548,7 @@ export class OPCUAProtocolClient implements ProtocolClient {
                     success = true;
                     break;
                 }
-                case "uav:channel-security":
+                case "uav:channelsec":
                     success = this.#setChannelSecurity(securityScheme as OPCUAChannelSecurityScheme);
                     break;
                 case "uav:authentication":
@@ -567,18 +567,26 @@ export class OPCUAProtocolClient implements ProtocolClient {
                     }
                     break;
                 }
-                default:
-                    // A scheme from another binding is legitimately none of our
-                    // business. One in our own namespace is: ignoring it would
-                    // connect with the insecure defaults and report success.
+                default: {
+                    const replacement = DEPRECATED_SCHEME_NAMES[securityScheme.scheme];
+                    if (replacement !== undefined) {
+                        // A pre-OPC-10101 name. Refuse rather than ignore: ignoring it would
+                        // connect with the insecure defaults while reporting success. (#1401)
+                        throw new Error(
+                            `Security scheme '${securityScheme.scheme}' is no longer supported. ` +
+                                `Use '${replacement}' instead, with the property names defined by ` +
+                                `OPC 10101 v1.00 ("uav:securityMode", "uav:securityPolicy", "uav:userIdentityToken").`
+                        );
+                    }
                     if (securityScheme.scheme?.startsWith("uav:")) {
                         throw new Error(
                             `Unsupported OPC UA security scheme '${securityScheme.scheme}'. ` +
-                                `Supported schemes are 'uav:channel-security' and 'uav:authentication'.`
+                                `Supported schemes are 'uav:channelsec' and 'uav:authentication'.`
                         );
                     }
                     // not for us , ignored
                     break;
+                }
             }
             if (!success) return false;
         }
