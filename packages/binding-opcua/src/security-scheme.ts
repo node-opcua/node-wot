@@ -70,7 +70,11 @@ export interface OPCUAUnsecureChannelScheme extends OPCUASecuritySchemeBase {
 export type OPCUAChannelSecurityScheme = OPCUASecureSecurityScheme | OPCUAUnsecureChannelScheme;
 
 /**
- * An authentication scheme, as defined in OPC 10101 "OPC UA for WoT Binding" §6.5.
+ * An authentication scheme, as defined in OPC 10101 "OPC UA for WoT Binding" §6.3.3.
+ *
+ * The scheme states *which kind* of identity to use. It never carries the identity
+ * itself: §6.3.2 and §6.3.3 both require that credentials be supplied out of band.
+ * See {@link OPCUACredentials}.
  *
  * Note: "IssuedToken" (uav:issueToken) is not implemented, as node-opcua does not
  * support issued tokens yet.
@@ -83,23 +87,10 @@ export interface OPCUACAuthenticationSchemeBase extends OPCUASecuritySchemeBase 
 export interface OPCUACUserNameAuthenticationScheme extends OPCUACAuthenticationSchemeBase {
     scheme: "uav:authentication";
     "uav:userIdentityToken": "UserName";
-    userName: string;
-    password?: string;
 }
 export interface OPCUACertificateAuthenticationScheme extends OPCUACAuthenticationSchemeBase {
     scheme: "uav:authentication";
     "uav:userIdentityToken": "Certificate";
-    // the certificate in PEM format
-    //  -----BEGIN CERTIFICATE----
-    //  ...
-    //  -----END CERTIFICATE-----
-    certificate: string;
-    // the private key in PEM format that is associated with the certificate
-    // For instance
-    //  -----BEGIN PRIVATE KEY-----
-    //  ...
-    //  -----END PRIVATE KEY-----
-    privateKey?: string;
 }
 export interface OPCUAAnonymousAuthenticationScheme extends OPCUACAuthenticationSchemeBase {
     scheme: "uav:authentication";
@@ -121,3 +112,50 @@ export type OPCUACAuthenticationScheme =
     | OPCUAIssuedTokenAuthenticationScheme
     | OPCUACertificateAuthenticationScheme
     | OPCUACUserNameAuthenticationScheme;
+
+/**
+ * Credentials for a "UserName" authentication scheme.
+ */
+export interface OPCUAUserNameCredentials {
+    userName: string;
+    password?: string;
+}
+
+/**
+ * Credentials for a "Certificate" authentication scheme.
+ */
+export interface OPCUACertificateCredentials {
+    // the certificate in PEM format
+    //  -----BEGIN CERTIFICATE----
+    //  ...
+    //  -----END CERTIFICATE-----
+    certificate: string;
+    // the private key in PEM format that is associated with the certificate
+    // For instance
+    //  -----BEGIN PRIVATE KEY-----
+    //  ...
+    //  -----END PRIVATE KEY-----
+    privateKey?: string;
+}
+
+/**
+ * Credentials for an OPC UA thing.
+ *
+ * OPC 10101 §6.3.2 and §6.3.3 state that "login credentials such as user name and
+ * passwords or certificates are not shared in WoT Thing Descriptions and must be
+ * provided separately". They are therefore supplied through the servient, keyed by
+ * the thing id:
+ *
+ * ```js
+ * servient.addCredentials({ "urn:my-thing": { userName: "joe", password: "secret" } });
+ * ```
+ */
+export type OPCUACredentials = OPCUAUserNameCredentials | OPCUACertificateCredentials;
+
+export function isUserNameCredentials(credentials: OPCUACredentials): credentials is OPCUAUserNameCredentials {
+    return (credentials as OPCUAUserNameCredentials).userName !== undefined;
+}
+
+export function isCertificateCredentials(credentials: OPCUACredentials): credentials is OPCUACertificateCredentials {
+    return (credentials as OPCUACertificateCredentials).certificate !== undefined;
+}

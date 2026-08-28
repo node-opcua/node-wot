@@ -21,7 +21,15 @@ import {
     UserTokenType,
 } from "node-opcua-client";
 import { convertPEMtoDER } from "node-opcua-crypto";
-import { OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
+import {
+    OPCUACertificateCredentials,
+    OPCUAUserNameCredentials,
+    OPCUACAuthenticationScheme,
+    OPCUAChannelSecurityScheme,
+    OPCUACredentials,
+    isCertificateCredentials,
+    isUserNameCredentials,
+} from "./security-scheme";
 
 export interface OPCUAChannelSecuritySettings {
     securityPolicy: SecurityPolicy;
@@ -85,29 +93,68 @@ export function resolveChannelSecurity(security: OPCUAChannelSecurityScheme): OP
 }
 
 /**
+ * Picks the credentials matching what the authentication scheme asks for.
+ *
+ * The servient hands credentials over in two different shapes depending on where the
+ * security is declared: form-level security goes through `retrieveCredentials()` and
+ * yields an array, thing-level security through the deprecated `getCredentials()` and
+ * yields a single object. Both are accepted here.
+ */
+function selectCredentials(
+    credentials: unknown,
+    matches: (candidate: OPCUACredentials) => boolean
+): OPCUACredentials | undefined {
+    const candidates = (Array.isArray(credentials) ? credentials : [credentials]) as OPCUACredentials[];
+    return candidates.find((candidate) => candidate != null && matches(candidate));
+}
+
+/**
  * Resolves the user identity information from the given authentication scheme.
- * Will throw an error if the token type is invalid.
+ *
+ * The scheme says which kind of identity to use; the identity itself comes from the
+ * servient credential store, as OPC 10101 §6.3.3 requires. Will throw if the token
+ * type is invalid or if the credentials it needs are missing.
+ *
  * @param security The OPC UA authentication scheme.
+ * @param credentials The credentials registered for the thing, if any.
  * @returns The resolved user identity information.
  */
-export function resolvedUserIdentity(security: OPCUACAuthenticationScheme) {
+export function resolvedUserIdentity(security: OPCUACAuthenticationScheme, credentials?: unknown) {
     let userIdentity: UserIdentityInfo;
     const tokenType = security["uav:userIdentityToken"];
     switch (tokenType) {
-        case "UserName":
+        case "UserName": {
+            const selected = selectCredentials(credentials, isUserNameCredentials);
+            if (selected === undefined) {
+                throw new Error(
+                    "No user name credentials for this thing: a 'UserName' authentication scheme requires " +
+                        "{ userName, password } to be registered with servient.addCredentials(), keyed by the thing id"
+                );
+            }
+            const { userName, password } = selected as OPCUAUserNameCredentials;
             userIdentity = <UserIdentityInfoUserName>{
                 type: UserTokenType.UserName,
-                password: security.password,
-                userName: security.userName,
+                password,
+                userName,
             };
             break;
-        case "Certificate":
+        }
+        case "Certificate": {
+            const selected = selectCredentials(credentials, isCertificateCredentials);
+            if (selected === undefined) {
+                throw new Error(
+                    "No certificate credentials for this thing: a 'Certificate' authentication scheme requires " +
+                        "{ certificate, privateKey } to be registered with servient.addCredentials(), keyed by the thing id"
+                );
+            }
+            const { certificate, privateKey } = selected as OPCUACertificateCredentials;
             userIdentity = <UserIdentityInfoX509>{
                 type: UserTokenType.Certificate,
-                certificateData: convertPEMtoDER(security.certificate),
-                privateKey: security.privateKey,
+                certificateData: convertPEMtoDER(certificate),
+                privateKey,
             };
             break;
+        }
         case "Anonymous":
             userIdentity = <UserIdentityInfo>{
                 type: UserTokenType.Anonymous,

@@ -525,8 +525,8 @@ export class OPCUAProtocolClient implements ProtocolClient {
         return true;
     }
 
-    #setAuthentication(security: OPCUACAuthenticationScheme): boolean {
-        this._userIdentity = resolvedUserIdentity(security);
+    #setAuthentication(security: OPCUACAuthenticationScheme, credentials?: unknown): boolean {
+        this._userIdentity = resolvedUserIdentity(security, credentials);
         return true;
     }
 
@@ -552,7 +552,7 @@ export class OPCUAProtocolClient implements ProtocolClient {
                     success = this.#setChannelSecurity(securityScheme as OPCUAChannelSecurityScheme);
                     break;
                 case "uav:authentication":
-                    success = this.#setAuthentication(securityScheme as OPCUACAuthenticationScheme);
+                    success = this.#setAuthentication(securityScheme as OPCUACAuthenticationScheme, credentials);
                     break;
                 case "combo": {
                     const combo = securityScheme as AllOfSecurityScheme | OneOfSecurityScheme;

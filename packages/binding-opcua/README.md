@@ -177,19 +177,20 @@ As an extension beyond the specification, the binding also accepts any other pol
 
 ### Authentication — `uav:authentication`
 
-| `uav:userIdentityToken` | additional properties                             |
-| ----------------------- | ------------------------------------------------- |
-| `"Anonymous"`           | none                                              |
-| `"UserName"`            | `userName` (required), `password`                 |
-| `"Certificate"`         | `certificate` (required, PEM), `privateKey` (PEM) |
+| `uav:userIdentityToken` | credentials required                    |
+| ----------------------- | --------------------------------------- |
+| `"Anonymous"`           | none                                    |
+| `"UserName"`            | `{ userName, password }`                |
+| `"Certificate"`         | `{ certificate, privateKey }`, both PEM |
+
+The scheme says only _which kind_ of identity to use. The identity itself is never written in the
+thing description — see [Credentials](#credentials) below.
 
 ```javascript
 securityDefinitions: {
     user_sc: {
         scheme: "uav:authentication",
         "uav:userIdentityToken": "UserName",
-        userName: "joe",
-        password: "secret",
     },
 },
 security: "user_sc",
@@ -200,13 +201,28 @@ as `oauth2` — are defined by OPC 10101 and are recognised by the binding, but 
 `node-opcua` does not support issued tokens yet, so a thing description requesting one is refused
 with an explicit error rather than connected under a weaker identity.
 
-> **Deviation from OPC 10101.** The specification states that login credentials such as user names,
-> passwords and certificates are _not_ shared in thing descriptions and must be provided
-> separately, e.g. through a credential store or by prompting the user. Its own examples therefore
-> declare `uav:userIdentityToken` and nothing else. This binding has no credential store yet, so
-> the `userName`, `password`, `certificate` and `privateKey` properties above are read from the
-> thing description itself. That is an extension, and it means a thing description carrying
-> credentials is a secret: do not publish or share one.
+### Credentials
+
+OPC 10101 §6.3.2 and §6.3.3 both state that login credentials are _not_ shared in thing
+descriptions and must be provided separately. They are therefore registered with the servient,
+keyed by the **thing id**:
+
+```javascript
+const servient = new Servient();
+servient.addClientFactory(new OPCUAClientFactory());
+servient.addCredentials({
+    "urn:my-opcua-thing": { userName: "joe", password: "secret" },
+});
+```
+
+For a `Certificate` scheme, supply `{ certificate, privateKey }` instead, both in PEM form. When
+several credentials are registered for one thing, the binding selects the entry that fits the
+scheme, so a user name and a certificate may coexist.
+
+A scheme whose credentials are missing is an error: the connection is refused rather than
+downgraded to an anonymous session.
+
+Since the thing description no longer carries any secret, it can be published and shared freely.
 
 ### Combining the two schemes
 
@@ -223,8 +239,6 @@ securityDefinitions: {
     user_sc: {
         scheme: "uav:authentication",
         "uav:userIdentityToken": "UserName",
-        userName: "joe",
-        password: "secret",
     },
     secure_sc: {
         scheme: "combo",
@@ -273,13 +287,23 @@ being silently ignored and connected without security.
 | `"tokenType": "anonymous"` / `"username"` / `"certificate"` | `"uav:userIdentityToken": "Anonymous"` / `"UserName"` / `"Certificate"` |
 | `"scheme": "uav:authentication"`                            | unchanged                                                               |
 
-The `userName`, `password`, `certificate` and `privateKey` properties are unchanged.
+Credentials that used to sit inside the authentication scheme — `userName`, `password`,
+`certificate`, `privateKey` — move out of the thing description entirely; see
+[Credentials](#credentials).
 
 ## Advanced
 
 The OPC-UA binding for node-wot offers additional features to allow you to interact with
 OPCUA Variant and DataValue in OPCUA JSON encoded form.
 For an example of use, you can dive into the unit test of the binding-opcua library.
+
+### A worked security example
+
+`packages/binding-opcua/test/opcua-security-e2e-test.ts` is a narrated tour of the security
+schemes against a real OPC UA server. Each case builds one thing description, connects, and then
+asks the server what session it actually granted — so it shows what happened on the wire rather
+than what was requested. `packages/examples/src/bindings/opcua/demo-opcua-secure.ts` is the same
+thing as a runnable script.
 
 ### Exploring the unit tests
 
