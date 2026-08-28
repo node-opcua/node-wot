@@ -17,7 +17,7 @@
 
 import { expect } from "chai";
 import path from "path";
-import { Servient, createLoggers } from "@node-wot/core";
+import { SecurityScheme, Servient, createLoggers } from "@node-wot/core";
 import { InteractionOptions } from "wot-typescript-definitions";
 
 import { MessageSecurityMode, OPCUAClient, OPCUAServer, SecurityPolicy } from "node-opcua";
@@ -27,7 +27,10 @@ import {
     OPCUACUserNameAuthenticationScheme,
     OPCUACertificateAuthenticationScheme,
     OPCUAChannelSecurityScheme,
+    OPCUAProtocolClient,
+    OPCUACAuthenticationScheme,
 } from "../src";
+import { resolveChannelSecurity, resolvedUserIdentity } from "../src/opcua-security-resolver";
 
 import { startServer } from "./fixture/basic-opcua-server";
 import { CertificateManagerSingleton } from "../src/certificate-manager-singleton";
@@ -454,5 +457,42 @@ describe("Testing OPCUA Security Combination", () => {
                 await servient.shutdown();
             }
         });
+    });
+});
+
+describe("Testing unsupported OPCUA security schemes", () => {
+    // A scheme we fail to recognise used to fall through `default:` and leave the
+    // client on its defaults - no encryption, no user - while setSecurity()
+    // returned true. Nothing downstream could detect that, so these must throw.
+
+    it("REFUSE1 - should refuse an unknown scheme in our own namespace", () => {
+        const client = new OPCUAProtocolClient();
+        expect(() => client.setSecurity([{ scheme: "uav:channelsec" } as unknown as SecurityScheme])).to.throw(
+            /Unsupported OPC UA security scheme/
+        );
+    });
+
+    it("REFUSE2 - should still ignore schemes belonging to another binding", () => {
+        const client = new OPCUAProtocolClient();
+        expect(client.setSecurity([{ scheme: "basic" } as SecurityScheme])).to.eql(true);
+    });
+
+    it("REFUSE3 - should refuse an unknown messageMode instead of downgrading it to none", () => {
+        expect(() =>
+            resolveChannelSecurity({
+                scheme: "uav:channel-security",
+                messageMode: "SignAndEncrypt",
+                policy: "Basic256Sha256",
+            } as unknown as OPCUAChannelSecurityScheme)
+        ).to.throw(/Invalid message mode/);
+    });
+
+    it("REFUSE4 - should refuse an unknown tokenType instead of connecting anonymously", () => {
+        expect(() =>
+            resolvedUserIdentity({
+                scheme: "uav:authentication",
+                tokenType: "IssuedToken",
+            } as unknown as OPCUACAuthenticationScheme)
+        ).to.throw(/Invalid user identity token type/);
     });
 });

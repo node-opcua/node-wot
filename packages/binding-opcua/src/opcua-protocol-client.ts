@@ -568,6 +568,15 @@ export class OPCUAProtocolClient implements ProtocolClient {
                     break;
                 }
                 default:
+                    // A scheme from another binding is legitimately none of our
+                    // business. One in our own namespace is: ignoring it would
+                    // connect with the insecure defaults and report success.
+                    if (securityScheme.scheme?.startsWith("uav:")) {
+                        throw new Error(
+                            `Unsupported OPC UA security scheme '${securityScheme.scheme}'. ` +
+                                `Supported schemes are 'uav:channel-security' and 'uav:authentication'.`
+                        );
+                    }
                     // not for us , ignored
                     break;
             }

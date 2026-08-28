@@ -21,7 +21,12 @@ import {
     UserTokenType,
 } from "node-opcua-client";
 import { convertPEMtoDER } from "node-opcua-crypto";
-import { OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
+import {
+    OPCUACAuthenticationScheme,
+    OPCUACUserNameAuthenticationScheme,
+    OPCUACertificateAuthenticationScheme,
+    OPCUAChannelSecurityScheme,
+} from "./security-scheme";
 
 export interface OPCUAChannelSecuritySettings {
     securityPolicy: SecurityPolicy;
@@ -42,8 +47,11 @@ export function resolveChannelSecurity(security: OPCUAChannelSecurityScheme): OP
             throw new Error(`Invalid security policy '${security.policy}'`);
         }
 
+        // Anything outside the modes we know is refused rather than quietly
+        // turned into None, which would connect with less security than asked for.
+        const messageMode: string = security.messageMode;
         let messageSecurityMode: MessageSecurityMode = MessageSecurityMode.Invalid;
-        switch (security.messageMode) {
+        switch (messageMode) {
             case "sign":
                 messageSecurityMode = MessageSecurityMode.Sign;
                 break;
@@ -51,8 +59,7 @@ export function resolveChannelSecurity(security: OPCUAChannelSecurityScheme): OP
                 messageSecurityMode = MessageSecurityMode.SignAndEncrypt;
                 break;
             default:
-                messageSecurityMode = MessageSecurityMode.None;
-                break;
+                throw new Error(`Invalid message mode '${messageMode}'`);
         }
 
         return {
@@ -75,29 +82,36 @@ export function resolveChannelSecurity(security: OPCUAChannelSecurityScheme): OP
  */
 export function resolvedUserIdentity(security: OPCUACAuthenticationScheme) {
     let userIdentity: UserIdentityInfo;
-    switch (security.tokenType) {
-        case "username":
+    const tokenType: string = security.tokenType;
+    switch (tokenType) {
+        case "username": {
+            const userScheme = security as OPCUACUserNameAuthenticationScheme;
             userIdentity = <UserIdentityInfoUserName>{
                 type: UserTokenType.UserName,
-                password: security.password,
-                userName: security.userName,
+                password: userScheme.password,
+                userName: userScheme.userName,
             };
             break;
-        case "certificate":
+        }
+        case "certificate": {
+            const certScheme = security as OPCUACertificateAuthenticationScheme;
             userIdentity = <UserIdentityInfoX509>{
                 type: UserTokenType.Certificate,
-                certificateData: convertPEMtoDER(security.certificate),
-                privateKey: security.privateKey,
+                certificateData: convertPEMtoDER(certScheme.certificate),
+                privateKey: certScheme.privateKey,
             };
             break;
+        }
         case "anonymous":
-        default:
-            // it is OK to use anonymous as default,
-            // as it provides the lowest privileges
             userIdentity = <UserIdentityInfo>{
                 type: UserTokenType.Anonymous,
             };
             break;
+        default:
+            // Anonymous is the right default for an identity that was never
+            // requested. It is the wrong answer for one we failed to recognise:
+            // the author asked for an identity and would get none, silently.
+            throw new Error(`Invalid user identity token type '${tokenType}'`);
     }
 
     return userIdentity;
