@@ -129,3 +129,45 @@ Server started opc.tcp://<YOURMACHINENAME>:7890
 
 the [node-wot-opcua-tools](https://github.com/node-opcua/node-wot-opcua-tools) project provides
 some useful applications built on top of node-wot and the OPCUA binding.
+
+## Maintenance
+
+### Upgrading the node-opcua dependencies
+
+This binding depends on ~20 `node-opcua-*` packages. They are published together and
+**must be upgraded as a set**: mixing versions makes `instanceof` checks fail across
+duplicated copies of the same class, and the resulting errors are hard to diagnose.
+
+This is why Dependabot pull requests that bump a single `node-opcua-*` package (for
+example [#1549](https://github.com/eclipse-thingweb/node-wot/pull/1549) or
+[#1551](https://github.com/eclipse-thingweb/node-wot/pull/1551)) fail to build: they
+raise one package and leave the rest behind. Close them and run the process below
+instead.
+
+From the repository root:
+
+```sh
+npm run ncu:opcua   # bumps every node-opcua* dependency to the newest version
+npm install
+npm run build
+npm run test --workspace @node-wot/binding-opcua
+```
+
+`ncu:opcua` is defined in the root `package.json` as:
+
+```
+npx -y npm-check-updates -u --deep --dep=dev,prod -f "node-opcua*" -t newest
+```
+
+Because `-t newest` is used, the bump can cross a major version of a family member that
+has its own version line (`node-opcua-crypto`, `node-opcua-json`). Review those entries
+after running the script and expect small code adaptations when their API changed. The
+unit tests in `packages/binding-opcua/test` cover the affected areas and should all pass
+before the pull request is opened.
+
+One recurring consequence is worth knowing about: `node-opcua-crypto@5` pulls in
+`@peculiar/asn1-schema`, whose bundled type declarations are ESM-only. Under
+`"module": "Node16"` this makes `tsc` report `TS1479` while type-checking those
+declaration files, even though nothing in this repository imports them directly.
+`"skipLibCheck": true` in `packages/examples/tsconfig.json` is what keeps that
+third-party typing problem from breaking the build.

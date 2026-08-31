@@ -114,6 +114,9 @@ To reduce the size of the installation from about 800 MByte down to about 200 MB
     5. Install the packages with `npm link @node-wot/<module>`
 -   Build error around `prebuild: npm run bootstrap`
     -   This has been seen failing on WSL. Try using a more recent Node.js version
+-   `TS2769: No overload matches this call` on `app.use(...)` in `binding-http` tests, where the argument is a handler that "is not assignable to parameter of type `Application`"
+    -   Two copies of `@types/express` (4.x and 5.x) are installed. `binding-http` uses Express 4, but `@types/cookies` (pulled in by the browser-bundle test runner) asks for `@types/express: "*"`, and a lockfile regeneration can hoist 5.x to the root, where the `express-oauth-server` typings pick it up.
+    -   The root `package.json` pins `@types/express` to 4.x to keep a single copy. Check with `npm ls @types/express`. Remove the pin once `binding-http` moves to Express 5.
 
 ## Adding a New Protocol Binding
 
