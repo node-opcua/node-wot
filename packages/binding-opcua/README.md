@@ -276,8 +276,8 @@ security: "secure_sc",
 
 Version 0.9.2 shipped provisional names, invented before OPC 10101 was published. They have been
 replaced by the names the specification defines, and the old ones are no longer accepted — a thing
-description that still uses them is rejected with an error naming its replacement, rather than
-being silently ignored and connected without security.
+description that still uses them is rejected with an error, rather than being silently ignored and
+connected without security. Use the table below to migrate.
 
 | 0.9.2                                                       | OPC 10101 v1.00                                                         |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------- |

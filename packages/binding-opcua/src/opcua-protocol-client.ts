@@ -63,7 +63,7 @@ import { Argument, MessageSecurityMode, UserTokenType } from "node-opcua-types";
 import { isGoodish2 } from "node-opcua";
 
 import { schemaDataValue } from "./codecs/opcua-data-schemas";
-import { DEPRECATED_SCHEME_NAMES, OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
+import { OPCUACAuthenticationScheme, OPCUAChannelSecurityScheme } from "./security-scheme";
 import { CertificateManagerSingleton } from "./certificate-manager-singleton";
 import { resolveChannelSecurity, resolvedUserIdentity } from "./opcua-security-resolver";
 import { findMostSecureChannel } from "./find-most-secure-channel";
@@ -568,16 +568,9 @@ export class OPCUAProtocolClient implements ProtocolClient {
                     break;
                 }
                 default: {
-                    const replacement = DEPRECATED_SCHEME_NAMES[securityScheme.scheme];
-                    if (replacement !== undefined) {
-                        // A pre-OPC-10101 name. Refuse rather than ignore: ignoring it would
-                        // connect with the insecure defaults while reporting success. (#1401)
-                        throw new Error(
-                            `Security scheme '${securityScheme.scheme}' is no longer supported. ` +
-                                `Use '${replacement}' instead, with the property names defined by ` +
-                                `OPC 10101 v1.00 ("uav:securityMode", "uav:securityPolicy", "uav:userIdentityToken").`
-                        );
-                    }
+                    // A scheme in our own namespace that we cannot honour is an error: ignoring it
+                    // would connect with the insecure defaults while reporting success. This also
+                    // covers the pre-OPC-10101 names, such as "uav:channel-security". (#1401)
                     if (securityScheme.scheme?.startsWith("uav:")) {
                         throw new Error(
                             `Unsupported OPC UA security scheme '${securityScheme.scheme}'. ` +

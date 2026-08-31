@@ -43,15 +43,6 @@ export type ValidOPCUASecurityPolicy =
 // deprecated |  "Basic256" | "http://opcfoundation.org/UA/SecurityPolicy#Basic256"
 
 /**
- * Names used before OPC 10101 v1.00 was published. They are no longer accepted;
- * they are kept here only so that the binding can raise a migration error that
- * names the replacement. See #1401.
- */
-export const DEPRECATED_SCHEME_NAMES: Readonly<Record<string, string>> = {
-    "uav:channel-security": "uav:channelsec",
-};
-
-/**
  * A channel security scheme, as defined in OPC 10101 "OPC UA for WoT Binding" §6.3.3.
  */
 export interface OPCUASecureSecurityScheme extends OPCUASecuritySchemeBase {

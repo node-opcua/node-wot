@@ -482,7 +482,7 @@ describe("Testing OPCUA Security Combination", () => {
 });
 
 describe("Testing OPCUA Security Scheme Migration (OPC 10101 v1.00)", () => {
-    it("MIG1 - should reject the pre-1.00 'uav:channel-security' scheme with a message naming its replacement", () => {
+    it("MIG1 - should reject the pre-1.00 'uav:channel-security' scheme rather than ignore it", () => {
         const client = new OPCUAProtocolClient();
         expect(() =>
             client.setSecurity([
@@ -492,7 +492,7 @@ describe("Testing OPCUA Security Scheme Migration (OPC 10101 v1.00)", () => {
                     policy: "Basic256Sha256",
                 } as unknown as SecurityScheme,
             ])
-        ).to.throw(/uav:channelsec/);
+        ).to.throw(/Unsupported OPC UA security scheme 'uav:channel-security'/);
     });
 
     it("MIG1b - should still refuse any other unknown scheme in our namespace", () => {
