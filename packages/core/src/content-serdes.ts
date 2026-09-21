@@ -113,13 +113,40 @@ export class ContentSerdes {
         return mt + "|" + scheme;
     }
 
+    /**
+     * Returns the URI scheme of a form href (e.g. "opc.tcp"), or undefined when there is
+     * none, in which case only codecs registered without a scheme apply.
+     */
+    public static schemeOf(href: string | undefined): string | undefined {
+        if (href == null) return undefined;
+        try {
+            return new URL(href).protocol.slice(0, -1);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Registers a codec for its media type. With a scheme, the codec applies only to forms
+     * whose href uses that scheme, and takes precedence there over the codec registered
+     * without a scheme. Scheme-specific codecs are never offered: they belong to one binding.
+     */
     public addCodec(codec: ContentCodec, offered = false, scheme?: string): void {
         if (scheme !== undefined) {
             ContentSerdes.get().codecsBySchemes.set(this.getMediaTypeScheme(codec.getMediaType(), scheme), codec);
         } else {
             ContentSerdes.get().codecs.set(codec.getMediaType(), codec);
+            if (offered) ContentSerdes.get().offered.add(codec.getMediaType());
         }
-        if (offered) ContentSerdes.get().offered.add(codec.getMediaType());
+    }
+
+    /** The codec for a media type, preferring the one registered for the given scheme. */
+    private findCodec(mt: string, scheme?: string): ContentCodec | undefined {
+        if (scheme !== undefined) {
+            const codec = this.codecsBySchemes.get(this.getMediaTypeScheme(mt, scheme));
+            if (codec !== undefined) return codec;
+        }
+        return this.codecs.get(mt);
     }
 
     public getSupportedMediaTypes(): Array<string> {
@@ -130,9 +157,9 @@ export class ContentSerdes {
         return Array.from(ContentSerdes.get().offered);
     }
 
-    public isSupported(contentType: string): boolean {
+    public isSupported(contentType: string, scheme?: string): boolean {
         const mt = ContentSerdes.getMediaType(contentType);
-        return this.codecs.has(mt);
+        return this.findCodec(mt, scheme) !== undefined;
     }
 
     public contentToValue(content: ReadContent, schema: DataSchema, scheme?: string): DataSchemaValue | undefined {
@@ -150,24 +177,11 @@ export class ContentSerdes {
         const mt = ContentSerdes.getMediaType(content.type);
         const par = ContentSerdes.getMediaTypeParameters(content.type);
 
-        // choose codec based on mediaType
-        if (this.codecs.has(mt)) {
-            let codec: ContentCodec | undefined;
-            if (scheme !== undefined) {
-                codec = this.codecsBySchemes.get(this.getMediaTypeScheme(mt, scheme));
-            }
-            if (codec === undefined) {
-                debug(`ContentSerdes deserializing from ${content.type}`);
-                codec = this.codecs.get(mt);
-            } else {
-                debug(`ContentSerdes deserializing from combining ${content.type} and ${mt}`);
-            }
-
-            // use codec to deserialize
-            // this.codecs.has(mt) is true
-            const res = codec!.bytesToValue(content.body, schema, par);
-
-            return res;
+        // choose codec based on mediaType, preferring the one registered for the scheme
+        const codec = this.findCodec(mt, scheme);
+        if (codec !== undefined) {
+            debug(`ContentSerdes deserializing from ${content.type}${scheme !== undefined ? ` (${scheme})` : ""}`);
+            return codec.bytesToValue(content.body, schema, par);
         } else {
             warn(`ContentSerdes passthrough due to unsupported media type '${mt}'`);
             return content.body.toString();
@@ -192,14 +206,8 @@ export class ContentSerdes {
         const mt = ContentSerdes.getMediaType(contentType);
         const par = ContentSerdes.getMediaTypeParameters(contentType);
 
-        // choose codec based on mediaType
-        let codec: ContentCodec | undefined;
-        if (scheme !== undefined) {
-            codec = this.codecsBySchemes.get(this.getMediaTypeScheme(mt, scheme));
-        }
-        if (codec === undefined) {
-            codec = this.codecs.get(mt);
-        }
+        // choose codec based on mediaType, preferring the one registered for the scheme
+        const codec = this.findCodec(mt, scheme);
         if (codec) {
             debug(`ContentSerdes serializing to ${contentType}`);
             bytes = codec.valueToBytes(value, schema, par);
